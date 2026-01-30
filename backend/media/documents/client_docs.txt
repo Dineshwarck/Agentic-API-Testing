@@ -1,0 +1,1 @@
+New project should be created when I execute the api and throw proper error messages for the user not the technical errors messages which can't understand by the user

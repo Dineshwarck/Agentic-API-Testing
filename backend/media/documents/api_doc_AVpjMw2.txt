@@ -1,0 +1,20 @@
+Base URL: http://localhost:8001/api/projects
+
+--- ENDPOINT DEFINITIONS ---
+
+1. CREATE PROJECT
+   Method: POST
+   Path: /projects
+   Request Body (JSON):
+   {
+       "name": "String (Required)",
+       "description": "String (Optional)"
+   }
+   Response (200 OK):
+   {
+       "id": "UUID",
+       "name": "String",
+       "description": "String",
+       "created_at": "ISO8601 Date"
+   }
+

@@ -1,0 +1,118 @@
+## 4. Run Your Agent[¶](https://google.github.io/adk-docs/get-started/quickstart/#run-your-agent)
+
+[¶](https://google.github.io/adk-docs/get-started/quickstart/#run-your-agent)
+Using the terminal, navigate to the parent directory of your agent project (e.g. using cd ..):
+
+```
+cd ..
+```
+
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-5https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-4https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-3https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-2https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-1parent_folder/ <-- navigate to this directory multi_tool_agent/ __init__.py agent.py .env
+```
+
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-5https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-4https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-3https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-2https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-29-1parent_folder/ <-- navigate to this directory multi_tool_agent/ __init__.py agent.py .env
+```
+
+There are multiple ways to interact with your agent:
+Authentication Setup for Vertex AI Users
+If you selected "Gemini - Google Cloud Vertex AI" in the previous step, you must authenticate with Google Cloud before launching the dev UI.
+Run this command and follow the prompts:
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-30-1gcloud auth application-default login
+```
+
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-30-1gcloud auth application-default login
+```
+
+Note: Skip this step if you're using "Gemini - Google AI Studio".
+Run the following command to launch the dev UI.
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-31-1adk web
+```
+
+
+```
+https://google.github.io/adk-docs/get-started/quickstart/#__codelineno-31-1adk web
+```
+
+Caution: ADK Web for development only
+ADK Web is not meant for use in production deployments. You should use ADK Web for development and debugging purposes only.
+Note for Windows users
+When hitting the _make_subprocess_transport NotImplementedError, consider using adk web --no-reload instead.
+
+```
+_make_subprocess_transport NotImplementedError
+```
+
+
+```
+adk web --no-reload
+```
+
+Step 1: Open the URL provided (usually http://localhost:8000 or http://127.0.0.1:8000) directly in your browser.
+
+```
+http://localhost:8000
+```
+
+
+```
+http://127.0.0.1:8000
+```
+
+Step 2. In the top-left corner of the UI, you can select your agent in the dropdown. Select "multi_tool_agent".
+Troubleshooting
+If you do not see "multi_tool_agent" in the dropdown menu, make sure you are running adk web in the parent folder of your agent folder (i.e. the parent folder of multi_tool_agent).
+
+```
+adk web
+```
+
+Step 3. Now you can chat with your agent using the textbox:
+Step 4. By using the Events tab at the left, you can inspect individual function calls, responses and model responses by clicking on the actions:
+
+```
+Events
+```
+
+On the Events tab, you can also click the Trace button to see the trace logs for each event that shows the latency of each function calls:
+
+```
+Events
+```
+
+
+```
+Trace
+```
+
+Step 5. You can also enable your microphone and talk to your agent:
+Model support for voice/video streaming
+In order to use voice/video streaming in ADK, you will need to use Gemini models that support the Live API. You can find the model ID(s) that supports the Gemini Live API in the documentation:
+- [Google AI Studio: Gemini Live API](https://ai.google.dev/gemini-api/docs/models#live-api)
+- [Vertex AI: Gemini Live API](https://cloud.google.com/vertex-ai/generative-ai/docs/live-api)
+[Google AI Studio: Gemini Live API](https://ai.google.dev/gemini-api/docs/models#live-api)
+[Vertex AI: Gemini Live API](https://cloud.google.com/vertex-ai/generative-ai/docs/live-api)
+You can then replace the model string in root_agent in the agent.py file you created earlier ([jump to section](https://google.github.io/adk-docs/get-started/quickstart/#agentpy)). Your code should look something like:
+
+```
+model
+```
+
+
+```
+root_agent
+```
+
+
+```
+agent.py
+```
