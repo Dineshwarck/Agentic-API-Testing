@@ -32,6 +32,7 @@ class ExecutionService:
         start_time = time.time()
         
         try:
+            print(f"DEBUG: EXECUTE_REQUEST: {method} {url}")
             async with httpx.AsyncClient() as client:
                 response = await client.request(
                     method=method,

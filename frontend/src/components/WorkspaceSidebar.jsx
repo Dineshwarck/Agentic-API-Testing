@@ -45,19 +45,8 @@ function WorkspaceSidebar({ open }) {
 
     const loadProjects = async () => {
         try {
-            // First get all projects
             const projectsResponse = await projectsAPI.list()
-            const projectsData = projectsResponse.data
-
-            // Then fetch endpoints for each project
-            const projectsWithEndpoints = await Promise.all(
-                projectsData.map(async (project) => {
-                    const endpointsResponse = await projectsAPI.listEndpoints(project.id)
-                    return { ...project, endpoints: endpointsResponse.data }
-                })
-            )
-
-            setProjects(projectsWithEndpoints)
+            setProjects(projectsResponse.data)
         } catch (error) {
             console.error('Failed to load projects:', error)
         }
@@ -378,66 +367,6 @@ function WorkspaceSidebar({ open }) {
                                             </ListItemButton>
                                         </List>
                                     </Collapse>
-
-                                    {/* Endpoints (nested) */}
-                                    {project.endpoints && project.endpoints.length > 0 && (
-                                        <Collapse in={openProjects.includes(project.id)} timeout="auto">
-                                            <List component="div" disablePadding>
-                                                {project.endpoints.map((endpoint) => (
-                                                    <ListItemButton
-                                                        key={endpoint.id}
-                                                        selected={selectedEndpoint === endpoint.id}
-                                                        onClick={() => handleEndpointClick(endpoint.id)}
-                                                        onContextMenu={(e) => handleContextMenu(e, { type: 'endpoint', id: endpoint.id, name: endpoint.name, projectId: project.id })}
-                                                        sx={{
-                                                            pl: 4,
-                                                            bgcolor: selectedEndpoint === endpoint.id ? 'primary.main' : 'transparent',
-                                                            color: selectedEndpoint === endpoint.id ? 'common.white' : 'text.primary',
-                                                            '&.Mui-selected': {
-                                                                bgcolor: 'primary.main',
-                                                                color: 'common.white',
-                                                                '&:hover': {
-                                                                    bgcolor: 'primary.dark',
-                                                                },
-                                                            },
-                                                            '&:hover': {
-                                                                bgcolor: selectedEndpoint === endpoint.id ? 'primary.dark' : 'action.hover',
-                                                            },
-                                                        }}
-                                                    >
-                                                        {editingItem?.type === 'endpoint' && editingItem.id === endpoint.id ? (
-                                                            <InputBase
-                                                                value={tempName}
-                                                                onChange={(e) => setTempName(e.target.value)}
-                                                                onKeyDown={handleEditKeyDown}
-                                                                onBlur={handleEditSave}
-                                                                autoFocus
-                                                                fullWidth
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                sx={{
-                                                                    typography: 'body2',
-                                                                    '& .MuiInputBase-input': { p: 0 }
-                                                                }}
-                                                            />
-                                                        ) : (
-                                                            <ListItemText
-                                                                primary={endpoint.name}
-                                                                secondary={endpoint.method}
-                                                                primaryTypographyProps={{
-                                                                    fontSize: '0.875rem',
-                                                                    fontWeight: selectedEndpoint === endpoint.id ? 600 : 400,
-                                                                }}
-                                                                secondaryTypographyProps={{
-                                                                    color: selectedEndpoint === endpoint.id ? 'rgba(255,255,255,0.7)' : 'text.secondary',
-                                                                    fontSize: '0.75rem',
-                                                                }}
-                                                            />
-                                                        )}
-                                                    </ListItemButton>
-                                                ))}
-                                            </List>
-                                        </Collapse>
-                                    )}
                                 </Box>
                             ))}
                         </List>

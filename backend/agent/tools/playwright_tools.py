@@ -193,3 +193,224 @@ async def wait_for_selector(selector: str, timeout: int = 5000) -> str:
             return "Element timeout"
     except Exception as e:
         return f"Error waiting for element: {str(e)}"
+
+async def get_expandable_elements() -> str:
+    """
+    Find ALL expandable elements on the page using universal patterns.
+    Works across Swagger UI, ReDoc, custom themes, and any standard web page.
+    
+    Returns:
+        JSON string with list of expandable elements and their coordinates
+    """
+    try:
+        page = await get_page()
+        
+        js_code = """
+        () => {
+            const expandable = [];
+            const seen = new Set();
+            
+            // Helper to add element if not already seen
+            const addElement = (el, type) => {
+                const rect = el.getBoundingClientRect();
+                // Only add if visible and not already tracked
+                if (rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight) {
+                    const key = `${Math.round(rect.x)},${Math.round(rect.y)}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        expandable.push({
+                            type: type,
+                            x: Math.round(rect.x + rect.width / 2),
+                            y: Math.round(rect.y + rect.height / 2),
+                            text: el.innerText?.substring(0, 50) || '',
+                            tag: el.tagName.toLowerCase()
+                        });
+                    }
+                }
+            };
+            
+            // 1. ARIA-based (most reliable, works across all sites)
+            document.querySelectorAll('[aria-expanded="false"]').forEach(el => {
+                addElement(el, 'aria-collapsed');
+            });
+            
+            // 2. HTML5 Details/Summary elements (native collapsible)
+            document.querySelectorAll('details:not([open])').forEach(el => {
+                const summary = el.querySelector('summary');
+                if (summary) addElement(summary, 'details-summary');
+            });
+            
+            // 3. Buttons with expand/show indicators
+            document.querySelectorAll('button, [role="button"], .btn').forEach(el => {
+                const text = (el.innerText || '').toLowerCase();
+                const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+                const title = (el.getAttribute('title') || '').toLowerCase();
+                const combined = text + ariaLabel + title;
+                
+                if (combined.includes('expand') || combined.includes('show more') || 
+                    combined.includes('toggle') || text === '+' || text === '▶' || text === '►') {
+                    addElement(el, 'expand-button');
+                }
+            });
+            
+            // 4. Clickable headers that might be accordions
+            document.querySelectorAll('[data-toggle], [data-bs-toggle], .accordion-header, .collapsible').forEach(el => {
+                addElement(el, 'data-toggle');
+            });
+            
+            // 5. Common Swagger UI patterns (as fallback, not primary)
+            document.querySelectorAll('.opblock:not(.is-open) .opblock-summary').forEach(el => {
+                addElement(el, 'swagger-opblock');
+            });
+            
+            // 6. ReDoc patterns
+            document.querySelectorAll('[data-section-id]:not(.expanded)').forEach(el => {
+                addElement(el, 'redoc-section');
+            });
+            
+            return JSON.stringify({
+                count: expandable.length,
+                elements: expandable
+            });
+        }
+        """
+        
+        result = await page.evaluate(js_code)
+        return result
+        
+    except Exception as e:
+        return f"Error finding expandable elements: {str(e)}"
+
+async def expand_all_visible_accordions() -> str:
+    """
+    Automatically expand ALL accordion-like elements on the page.
+    Uses universal patterns to work across different documentation frameworks.
+    
+    Returns:
+        Summary of expansion actions taken
+    """
+    try:
+        page = await get_page()
+        
+        js_code = """
+        async () => {
+            let expanded = 0;
+            let iterations = 0;
+            const maxIterations = 5;
+            
+            const expandElements = () => {
+                let count = 0;
+                
+                // 1. Click ARIA collapsed elements
+                document.querySelectorAll('[aria-expanded="false"]').forEach(el => {
+                    try { el.click(); count++; } catch(e) {}
+                });
+                
+                // 2. Open HTML5 details elements
+                document.querySelectorAll('details:not([open])').forEach(el => {
+                    try { el.open = true; count++; } catch(e) {}
+                });
+                
+                // 3. Click Swagger opblocks
+                document.querySelectorAll('.opblock:not(.is-open) .opblock-summary').forEach(el => {
+                    try { el.click(); count++; } catch(e) {}
+                });
+                
+                // 4. Click ReDoc sections
+                document.querySelectorAll('[data-section-id]:not(.expanded) > div:first-child').forEach(el => {
+                    try { el.click(); count++; } catch(e) {}
+                });
+                
+                return count;
+            };
+            
+            // Iteratively expand (in case expanding reveals more accordions)
+            while (iterations < maxIterations) {
+                const newlyExpanded = expandElements();
+                expanded += newlyExpanded;
+                iterations++;
+                
+                if (newlyExpanded === 0) break;
+                
+                // Wait for animations
+                await new Promise(r => setTimeout(r, 500));
+            }
+            
+            return `Expanded ${expanded} elements in ${iterations} iterations`;
+        }
+        """
+        
+        result = await page.evaluate(js_code)
+        await page.wait_for_timeout(1000)  # Final wait for animations
+        
+        return result
+        
+    except Exception as e:
+        return f"Error expanding accordions: {str(e)}"
+
+async def click_at_coordinates(x: int, y: int) -> str:
+    """
+    Click at specific screen coordinates.
+    Useful for AI-guided clicking when element selectors aren't available.
+    
+    Args:
+        x: X coordinate (pixels from left)
+        y: Y coordinate (pixels from top)
+        
+    Returns:
+        Success message or error
+    """
+    try:
+        page = await get_page()
+        await page.mouse.click(x, y)
+        await page.wait_for_timeout(300)  # Brief wait for any reactions
+        return f"Clicked at coordinates ({x}, {y})"
+    except Exception as e:
+        return f"Error clicking at coordinates: {str(e)}"
+
+async def capture_page_screenshot() -> str:
+    """
+    Take a screenshot of the current page for AI visual analysis.
+    
+    Returns:
+        Base64 encoded screenshot or path to saved file
+    """
+    try:
+        page = await get_page()
+        import base64
+        
+        # Take full page screenshot as bytes
+        screenshot_bytes = await page.screenshot(full_page=False)
+        
+        # Return as base64 for AI to analyze
+        b64_screenshot = base64.b64encode(screenshot_bytes).decode('utf-8')
+        
+        return f"Screenshot captured. Base64 length: {len(b64_screenshot)} chars. First 100 chars: {b64_screenshot[:100]}..."
+        
+    except Exception as e:
+        return f"Error capturing screenshot: {str(e)}"
+
+async def scroll_page(direction: str = "down", amount: int = 500) -> str:
+    """
+    Scroll the page to reveal more content.
+    
+    Args:
+        direction: "up" or "down"
+        amount: Pixels to scroll
+        
+    Returns:
+        Success message
+    """
+    try:
+        page = await get_page()
+        
+        if direction.lower() == "down":
+            await page.evaluate(f"window.scrollBy(0, {amount})")
+        else:
+            await page.evaluate(f"window.scrollBy(0, -{amount})")
+            
+        await page.wait_for_timeout(300)
+        return f"Scrolled {direction} by {amount}px"
+        
+    except Exception as e:
+        return f"Error scrolling: {str(e)}"

@@ -235,9 +235,9 @@ const CollectionsExplorerPage = () => {
             const response = await agentAPI.generateSpecs(id, null, null, selectedEndpoints);
             setGenerationResult(response.data);
 
-            // Navigate to test plan page after successful generation
+            // Navigate to review page after successful generation
             setTimeout(() => {
-                navigate(`/workspaces/${id}/test-plan`);
+                navigate(`/projects/${id}/review`);
             }, 2000);
         } catch (err) {
             console.error('Test generation error:', err);

@@ -68,6 +68,21 @@ const EndpointRequestPanel = ({ endpoint, onSendRequest, onUpdateEndpoint, respo
             setHeaders(
                 Object.entries(endpoint.headers || {}).map(([key, value]) => ({ key, value, enabled: true }))
             );
+
+            // Load Parameters (Query)
+            if (endpoint.parameters && Array.isArray(endpoint.parameters)) {
+                const queryParams = endpoint.parameters
+                    .filter(p => p.in === 'query')
+                    .map(p => ({
+                        key: p.name,
+                        value: p.schema?.default || '',
+                        enabled: true
+                    }));
+                setParams(queryParams);
+            } else {
+                setParams([]);
+            }
+
             setBody(JSON.stringify(endpoint.body_schema || {}, null, 2));
 
             // Initialize auth if saved (future proofing)

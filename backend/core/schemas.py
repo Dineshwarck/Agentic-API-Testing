@@ -30,7 +30,7 @@ class CollectionCreateSchema(Schema):
 class EndpointSchema(ModelSchema):
     class Meta:
         model = Endpoint
-        fields = ['id', 'project', 'collection', 'name', 'url', 'method', 'description', 'headers', 'auth_config', 'created_at', 'updated_at']
+        fields = ['id', 'project', 'collection', 'name', 'url', 'method', 'description', 'headers', 'parameters', 'auth_config', 'body_schema', 'response_schema', 'created_at', 'updated_at']
 
 class EndpointCreateSchema(Schema):
     name: str

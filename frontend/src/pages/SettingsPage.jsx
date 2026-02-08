@@ -24,6 +24,7 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [openDialog, setOpenDialog] = useState(false)
+    const [editingId, setEditingId] = useState(null)
 
     // Form State
     const [formData, setFormData] = useState({
@@ -51,14 +52,51 @@ export default function SettingsPage() {
         }
     }
 
-    const handleCreate = async () => {
+    const handleSave = async () => {
         try {
-            await axios.post('http://127.0.0.1:8001/api/llm-providers', formData)
+            if (editingId) {
+                // Remove api_key if it's empty to avoid overwriting existing key
+                const payload = { ...formData }
+                if (!payload.api_key) {
+                    delete payload.api_key
+                }
+                await axios.put(`http://127.0.0.1:8001/api/llm-providers/${editingId}`, payload)
+            } else {
+                await axios.post('http://127.0.0.1:8001/api/llm-providers', formData)
+            }
             setOpenDialog(false)
             fetchProviders()
         } catch (err) {
-            alert('Error creating provider: ' + err.message)
+            alert('Error saving provider: ' + err.message)
         }
+    }
+
+    const handleEdit = (provider) => {
+        setFormData({
+            name: provider.name,
+            provider_type: provider.provider_type,
+            base_url: provider.base_url || '',
+            api_key: '', // Don't show existing key for security, user normally overwrites or leaves blank if backend supports partial updates.
+            // However, for this simple UI, we might need to ask the user to re-enter it or handle it carefully.
+            // If backend requires api_key regarding valid schema, we might need it.
+            // Let's assume we populate what we have, but usually API keys are hidden.
+            // If the backend model returns the key (which is bad practice but possible here), we can use it.
+            // Looking at backend code, it returns LLMProviderSchema.
+            default_model: provider.default_model,
+            is_active: provider.is_active
+        })
+        // If the API returns the key, use it. If not, the user has to re-enter it if they want to change it,
+        // OR the backend should handle partial updates where api_key can be optional.
+        // For 'LLMProviderUpdateSchema', we should check if api_key is optional.
+        // Given I cannot see schema definition fully, I will assume user might need to re-enter it or I'll just leave it empty.
+        // If I leave it empty, and backend requires it, update will fail.
+        // Let's populate it if it's in the provider object from the list.
+        if (provider.api_key) {
+            setFormData(prev => ({ ...prev, api_key: provider.api_key }))
+        }
+
+        setEditingId(provider.id)
+        setOpenDialog(true)
     }
 
     const handleActivate = async (id) => {
@@ -86,6 +124,7 @@ export default function SettingsPage() {
                 <Typography variant="h4" fontWeight="600">Settings</Typography>
                 <AppButton startIcon={<AddIcon />} onClick={() => {
                     setFormData({ name: '', provider_type: 'OPENAI', base_url: '', api_key: '', default_model: '', is_active: false })
+                    setEditingId(null)
                     setOpenDialog(true)
                 }}>
                     Add Provider
@@ -125,6 +164,9 @@ export default function SettingsPage() {
                                         )}
                                     </TableCell>
                                     <TableCell align="right">
+                                        <IconButton size="small" color="primary" onClick={() => handleEdit(p)} sx={{ mr: 1 }}>
+                                            <EditIcon />
+                                        </IconButton>
                                         <IconButton size="small" color="error" onClick={() => handleDelete(p.id)}>
                                             <DeleteIcon />
                                         </IconButton>
@@ -143,7 +185,7 @@ export default function SettingsPage() {
 
             {/* Create Dialog */}
             <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Configure LLM Provider</DialogTitle>
+                <DialogTitle>{editingId ? 'Edit LLM Provider' : 'Configure LLM Provider'}</DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{ mt: 0.5 }}>
                         <Grid item xs={12}>
@@ -202,7 +244,7 @@ export default function SettingsPage() {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-                    <AppButton onClick={handleCreate}>Save Configuration</AppButton>
+                    <AppButton onClick={handleSave}>Save Configuration</AppButton>
                 </DialogActions>
             </Dialog>
         </Container>

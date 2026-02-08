@@ -96,6 +96,7 @@ async def run_workspace_tests(request, project_id: UUID, payload: BulkTestRunCre
     Execute all test cases in a workspace/project.
     Returns the BulkTestRun tracking object.
     """
+    print(f"DEBUG: Received Bulk Run Request for Project {project_id}")
     from .services.execution_service import ExecutionService
     
     project = get_object_or_404(Project, id=project_id)

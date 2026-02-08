@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from .fields import EncryptedCharField
 
 class Project(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -41,6 +42,7 @@ class Endpoint(models.Model):
     method = models.CharField(max_length=10, choices=METHODS, default='GET')
     description = models.TextField(blank=True, null=True)
     headers = models.JSONField(default=dict, blank=True)
+    parameters = models.JSONField(default=list, blank=True, help_text="Query parameters")
     auth_config = models.JSONField(default=dict, blank=True)
     body_schema = models.JSONField(default=dict, blank=True)
     response_schema = models.JSONField(default=dict, blank=True)
@@ -169,11 +171,7 @@ class TestRun(models.Model):
     def __str__(self):
         return f"Run {self.id} ({self.status})"
 
-class TestResult(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    test_run = models.ForeignKey(TestRun, related_name='results', on_delete=models.CASCADE)
-    test_case = models.ForeignKey(TestCase, related_name='results', on_delete=models.CASCADE)
-    
+
 class TestData(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(Project, related_name='test_data', on_delete=models.CASCADE)
@@ -226,7 +224,7 @@ class LLMProvider(models.Model):
     provider_type = models.CharField(max_length=50, choices=PROVIDER_TYPES, default='OPENAI')
     
     base_url = models.CharField(max_length=500, blank=True, null=True, help_text="Required for OpenAI compatible providers (e.g. https://api.groq.com/openai/v1)")
-    api_key = models.CharField(max_length=500, help_text="Store securely. For MVP, plain text.")
+    api_key = EncryptedCharField(max_length=500, help_text="Stored securely using Fernet encryption.")
     default_model = models.CharField(max_length=100, help_text="Model ID to use (e.g. gpt-4o, llama3-70b-8192)")
     
     is_active = models.BooleanField(default=False, help_text="Only one provider should be active at a time.")

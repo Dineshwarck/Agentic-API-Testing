@@ -9,10 +9,11 @@ from asgiref.sync import sync_to_async
 from core.models import LLMProvider
 
 # Adapters
-import google.generativeai as genai
+import google.genai as genai
 from openai import AsyncOpenAI
 from .utils_llm import function_to_openai_schema, execute_tool_call
 import inspect # For inspecting async functions
+import httpx # Fix for http_client proxies issue
 from google.ai import generativelanguage as glm # For access to FunctionResponse protos
 
 class BaseLLMAdapter(ABC):
@@ -134,9 +135,11 @@ class GeminiAdapter(BaseLLMAdapter):
 class OpenAIAdapter(BaseLLMAdapter):
     def __init__(self, api_key: str, model: str, base_url: str = None):
         super().__init__(api_key, model, base_url)
+        # Fix: Explicitly pass http_client to avoid 'proxies' kwarg error in newer openai/httpx versions
         self.client = AsyncOpenAI(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            http_client=httpx.AsyncClient()
         )
 
     def _convert_tools(self, tools: List[Any]) -> List[Dict]:
@@ -169,6 +172,12 @@ class OpenAIAdapter(BaseLLMAdapter):
             
         try:
             # 1. First Call
+            # FORCE DEBUG EXCEPTION
+            key_preview = self.client.api_key[:10] + "..." + self.client.api_key[-4:] if self.client.api_key else "None"
+            debug_msg = f"DEBUG FATAL CHECK: URL={self.client.base_url} | KEY={key_preview}"
+            print(debug_msg) # Keep print just in case
+            raise Exception(debug_msg) 
+            
             response = await self.client.chat.completions.create(**kwargs)
             
             message = response.choices[0].message
@@ -274,6 +283,11 @@ async def get_active_llm():
     try:
         # Native Async ORM (Django 4.1+)
         provider = await LLMProvider.objects.filter(is_active=True).afirst()
+        
+        if provider:
+             print(f"DEBUG: get_active_llm found provider: {provider.provider_type}")
+             print(f"DEBUG: API Key Prefix: {provider.api_key[:10] if provider.api_key else 'None'}")
+             print(f"DEBUG: Base URL: {provider.base_url}")
         
         if not provider:
             raise ValueError("No active LLM Provider configured in Settings.")
