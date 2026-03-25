@@ -83,6 +83,7 @@ class TestRunSchema(ModelSchema):
         fields = ['id', 'project', 'status', 'started_at', 'completed_at', 'summary']
 
 class TestResultSchema(ModelSchema):
+    test_case: TestCaseSchema
     class Meta:
         model = TestResult
         fields = ['id', 'test_run', 'test_case', 'status', 'passed', 'status_code', 'response_body', 'headers', 'duration_ms', 'executed_at']

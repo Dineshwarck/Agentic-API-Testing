@@ -31,26 +31,40 @@ const BulkExecutionProgressDialog = ({ open, onClose, runId, projectId }) => {
         current_test: null,
     });
     const [isComplete, setIsComplete] = useState(false);
+    const [errorCount, setErrorCount] = useState(0);
 
     useEffect(() => {
         if (!runId || !open) return;
 
-        // Poll for progress every 1 second
+        let errors = 0;
+
+        // Poll for progress every 2 seconds
         const intervalId = setInterval(async () => {
             try {
                 const response = await fetch(`http://localhost:8001/api/bulk-runs/${runId}/progress`);
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
                 const data = await response.json();
 
                 setProgress(data);
+                errors = 0; // Reset on success
 
                 if (data.status === 'COMPLETED' || data.status === 'FAILED') {
                     setIsComplete(true);
                     clearInterval(intervalId);
                 }
             } catch (error) {
-                console.error('Error fetching progress:', error);
+                errors++;
+                console.error(`Error fetching progress (attempt ${errors}):`, error);
+                if (errors >= 5) {
+                    console.error('Too many errors, stopping progress polling');
+                    setProgress(prev => ({ ...prev, status: 'FAILED' }));
+                    setIsComplete(true);
+                    clearInterval(intervalId);
+                }
             }
-        }, 1000);
+        }, 2000);
 
         return () => clearInterval(intervalId);
     }, [runId, open]);
@@ -144,22 +158,44 @@ const BulkExecutionProgressDialog = ({ open, onClose, runId, projectId }) => {
             </DialogContent>
 
             <DialogActions>
-                {isComplete && progress.status === 'COMPLETED' && (
+                {isComplete && progress.failed === 0 && progress.passed > 0 && (
                     <Typography variant="body2" color="success.main" sx={{ mr: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
                         <PassIcon fontSize="small" />
-                        All tests executed successfully!
+                        All tests passed!
                     </Typography>
                 )}
-                {isComplete && progress.status === 'FAILED' && (
+                {isComplete && progress.failed > 0 && (
                     <Typography variant="body2" color="error" sx={{ mr: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
                         <FailIcon fontSize="small" />
-                        Some tests failed
+                        {progress.passed > 0
+                            ? `${progress.passed} passed, ${progress.failed} failed`
+                            : `${progress.failed} test(s) failed`}
+                    </Typography>
+                )}
+                {isComplete && progress.status === 'FAILED' && progress.failed === 0 && (
+                    <Typography variant="body2" color="error" sx={{ mr: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <FailIcon fontSize="small" />
+                        Execution failed
                     </Typography>
                 )}
                 {isComplete && (
-                    <Button onClick={onClose} variant="contained">
-                        Close
-                    </Button>
+                    <>
+                        <Button
+                            onClick={() => {
+                                if (projectId) {
+                                    window.location.href = `/projects/${projectId}/reports`;
+                                }
+                                onClose();
+                            }}
+                            variant="outlined"
+                            color="primary"
+                        >
+                            View Results
+                        </Button>
+                        <Button onClick={onClose} variant="contained">
+                            Close
+                        </Button>
+                    </>
                 )}
                 {!isComplete && (
                     <Button onClick={onClose} variant="outlined" disabled>

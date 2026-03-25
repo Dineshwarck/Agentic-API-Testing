@@ -317,47 +317,26 @@ const TestCaseReviewPage = () => {
 
         setExecuting(true);
 
-        setExecuting(true);
-
         try {
             const selectedIdsArray = Array.from(selectedIds);
             const response = await testRunsAPI.execute(id, selectedIdsArray);
             const runData = response.data;
 
-            // Backend returns: { run_id, status, summary, results: [...] }
-            const results = runData.results.map(r => {
-                // Find original test case info for display if needed
-                const tc = testCases.find(t => t.id === r.test_case_id) || {};
-
-                return {
-                    id: r.test_case_id,
-                    title: tc.title || 'Unknown Test Case',
-                    endpoint: tc.endpoint_name || 'Unknown Endpoint',
-                    expected_status: tc.expected_status,
-                    actual_status: r.status_code,
-                    passed: r.passed,
-                    duration_ms: r.duration_ms || 0, // Backend doesn't return duration in summary yet, need to fetch
-                    response_body: {} // Backend summary doesn't include full body, minimal view for now
-                };
-            });
-
-            setExecutionResults({
-                total: results.length,
-                passed: results.filter(r => r.passed).length,
-                failed: results.filter(r => !r.passed).length,
-                duration_ms: 0, // Mock for now or sum if available
-                results: results
-            });
+            // Backend returns the run object with id and bulk_run_id; execution runs in the background
+            if (runData && runData.bulk_run_id) {
+                setBulkRunId(runData.bulk_run_id);
+                setBulkProgressDialogOpen(true);
+            }
 
             setExecuting(false);
-            setShowResults(true);
+            setSelectedIds(new Set());
+            setSelectAll(false);
 
         } catch (err) {
             console.error('Execution failed:', err);
             alert('Failed to execute test run');
             setExecuting(false);
         }
-        setShowResults(true);
     };
 
     const handleCloseResults = () => {
@@ -539,7 +518,6 @@ const TestCaseReviewPage = () => {
                                         <Checkbox
                                             checked={selectedIds.has(testCase.id)}
                                             onChange={() => handleToggleSelect(testCase.id)}
-                                            disabled={testCase.status !== 'DRAFT'}
                                             sx={{ mt: 2 }}
                                         />
                                         <Box flex={1}>

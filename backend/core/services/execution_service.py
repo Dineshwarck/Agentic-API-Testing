@@ -124,17 +124,8 @@ class ExecutionService:
         )
         return run
 
-    @staticmethod
-    async def execute_test_case(test_case: TestCase, test_run: TestRun) -> TestResult:
-        """
-        Execute a saved test case and save the result.
-        """
-        # Prepare request
-        endpoint = await sync_to_async(lambda: test_case.endpoint)()
-        
-        # Merge headers (Endpoint + Test Case override if any - future improvement)
-        headers = endpoint.headers.copy()
-        
+
+
     @staticmethod
     async def execute_test_case(test_case: TestCase, test_run: TestRun, context: Dict[str, Any] = None, iteration_index: int = 0) -> TestResult:
         """
@@ -151,12 +142,30 @@ class ExecutionService:
         if context:
             payload = ExecutionService._substitute_variables(payload, context)
             headers = ExecutionService._substitute_variables(headers, context)
-            # URL params substitution could be added here if endpoint.url supports it
+        
+        # Resolve full URL (endpoints may store relative paths like /api/projects)
+        url = endpoint.url
+        if not url.startswith('http'):
+            # Try to get base URL from project environment
+            base_url = 'http://localhost:8001'  # Default fallback
+            try:
+                project = await sync_to_async(lambda: endpoint.project)()
+                envs = await sync_to_async(list)(project.environments.all())
+                for env in envs:
+                    if env.variables and isinstance(env.variables, dict):
+                        env_base = env.variables.get('base_url') or env.variables.get('BASE_URL')
+                        if env_base:
+                            base_url = env_base.rstrip('/')
+                            break
+            except Exception:
+                pass
+            url = f"{base_url}{url}"
+            print(f"[EXEC] Resolved URL: {url}")
         
         # Execute
         result_data = await ExecutionService.execute_request(
             method=endpoint.method,
-            url=endpoint.url,
+            url=url,
             headers=headers,
             body=payload
         )
@@ -220,7 +229,7 @@ class ExecutionService:
         )
         
         # Create test run for tracking individual results
-        test_run = await ExecutionService.create_test_run(str(project.id))
+        test_run = await ExecutionService.create_run(str(project.id))
         
         # Execute tests
         if parallel:

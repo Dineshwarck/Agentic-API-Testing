@@ -24,6 +24,11 @@ import {
     Chip
 } from '@mui/material';
 import {
+    PictureAsPdf as PdfIcon,
+    TableChart as ExcelIcon,
+    Download as DownloadIcon,
+} from '@mui/icons-material';
+import {
     Chart as ChartJS,
     CategoryScale,
     LinearScale,
@@ -38,6 +43,10 @@ import {
 } from 'chart.js';
 import { Line, Pie, Bar } from 'react-chartjs-2';
 import { testRunsAPI, projectsAPI } from '../api/endpoints';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 // Register Chart.js components
 ChartJS.register(
@@ -118,6 +127,286 @@ const ReportsPage = () => {
             return () => clearInterval(interval);
         }
     }, [id, dateRange]);
+
+    // ─── Export Handlers ──────────────────────────────────────────────
+
+    const handleDownloadRunReport = async (runId) => {
+        try {
+            // Fetch detailed run data
+            const [detailsRes, resultsRes] = await Promise.all([
+                testRunsAPI.getDetails(runId),
+                testRunsAPI.getResults(runId)
+            ]);
+
+            const run = detailsRes.data;
+            const results = resultsRes.data;
+            const projectName = workspace?.name || 'Project';
+
+            const doc = new jsPDF();
+            const now = new Date(run.started_at).toLocaleString();
+
+            // 1. Professional Header
+            doc.setFillColor(33, 150, 243); // Material Blue
+            doc.rect(0, 0, 210, 40, 'F');
+
+            doc.setFontSize(24);
+            doc.setTextColor(255, 255, 255);
+            doc.text('Test Execution Report', 14, 25);
+
+            doc.setFontSize(10);
+            doc.text(`${projectName}  |  ${now}`, 14, 33);
+
+            let y = 50;
+
+            // 2. Executive Summary (AI Box)
+            doc.setFontSize(14);
+            doc.setTextColor(40, 40, 40);
+            doc.text('Executive Summary (AI)', 14, y);
+            y += 8;
+
+            doc.setFillColor(245, 247, 250);
+            doc.setDrawColor(200, 200, 200);
+
+            // Calculate summary height
+            const summaryText = run.summary || "No automated summary available for this run.";
+            const splitSummary = doc.splitTextToSize(summaryText, 180);
+            const boxHeight = (splitSummary.length * 5) + 10;
+
+            doc.rect(14, y, 182, boxHeight, 'FD');
+            doc.setFontSize(10);
+            doc.setTextColor(60, 60, 60);
+            doc.text(splitSummary, 20, y + 8);
+
+            y += boxHeight + 15;
+
+            // 3. Metadata Table (Quick Info)
+            doc.setFontSize(14);
+            doc.setTextColor(40, 40, 40);
+            doc.text('Run Details', 14, y);
+            y += 5;
+
+            // Helper: track cursor Y via didDrawPage hook
+            let cursorY = 0;
+            const trackY = { didDrawPage: (data) => { cursorY = data.cursor.y; } };
+
+            autoTable(doc, {
+                startY: y,
+                body: [
+                    ['Run ID:', run.id],
+                    ['Status:', { content: run.status, styles: { fontStyle: 'bold', textColor: run.status === 'COMPLETED' ? [76, 175, 80] : [244, 67, 54] } }],
+                    ['Date:', now],
+                    ['Total Tests:', results.length.toString()],
+                    ['Passed:', results.filter(r => r.passed).length.toString()],
+                    ['Failed:', results.filter(r => !r.passed).length.toString()],
+                ],
+                theme: 'plain',
+                styles: { fontSize: 10, cellPadding: 2 },
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } },
+                ...trackY
+            });
+
+            y = cursorY + 15;
+
+            // 4. Detailed Results
+            doc.setFontSize(14);
+            doc.setTextColor(40, 40, 40);
+            doc.text('Detailed Results', 14, y);
+            y += 5;
+
+            autoTable(doc, {
+                startY: y,
+                head: [['Test Case', 'Status', 'HTTP Code', 'Duration (ms)']],
+                body: results.map(res => [
+                    {
+                        content: `${res.test_case.title}\n${res.test_case.description || ''}`,
+                        styles: { fontSize: 8 }
+                    },
+                    {
+                        content: res.passed ? 'PASS' : 'FAIL',
+                        styles: {
+                            textColor: res.passed ? [76, 175, 80] : [244, 67, 54],
+                            fontStyle: 'bold'
+                        }
+                    },
+                    res.status_code || '-',
+                    res.duration_ms || 0
+                ]),
+                headStyles: { fillColor: [44, 62, 80], textColor: 255 },
+                alternateRowStyles: { fillColor: [248, 249, 250] },
+                styles: { cellPadding: 4, valign: 'middle' },
+                columnStyles: {
+                    0: { cellWidth: 100 },
+                    1: { halign: 'center' },
+                    2: { halign: 'center' },
+                    3: { halign: 'center' }
+                }
+            });
+
+            doc.save(`RunReport_${run.id.substring(0, 8)}.pdf`);
+        } catch (error) {
+            console.error('Failed to download report:', error);
+            // TODO: Add notification toast here
+        }
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+        const projectName = workspace?.name || 'Project';
+        const now = new Date().toLocaleDateString();
+
+        // 1. Modern Branding Header
+        doc.setFillColor(44, 62, 80); // Darker professional blue
+        doc.rect(0, 0, 210, 45, 'F');
+
+        doc.setFontSize(22);
+        doc.setTextColor(255, 255, 255);
+        doc.text('Project Analytics Report', 14, 25);
+
+        doc.setFontSize(10);
+        doc.text(`Project: ${projectName}`, 14, 34);
+        doc.text(`Generated: ${now}  |  Date Range: Last ${dateRange} days`, 14, 39);
+
+        let y = 55;
+        let cursorY = 0;
+        const trackY = { didDrawPage: (data) => { cursorY = data.cursor.y; } };
+
+        const addHeader = (title) => {
+            if (y > 250) { doc.addPage(); y = 20; }
+            doc.setFontSize(14);
+            doc.setTextColor(33, 150, 243);
+            doc.text(title.toUpperCase(), 14, y);
+            doc.setDrawColor(230);
+            doc.line(14, y + 2, 196, y + 2);
+            y += 10;
+        };
+
+        // Section 1: Execution History Summary
+        addHeader('Execution History Summary');
+        if (historyData.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['Run ID', 'Status', 'Total', 'Passed', 'Failed', 'Pass Rate', 'Date']],
+                body: historyData.map(run => [
+                    run.id.substring(0, 8) + '...',
+                    run.status,
+                    run.total_tests || 0,
+                    run.passed || 0,
+                    run.failed || 0,
+                    `${run.pass_rate}%`,
+                    new Date(run.executed_at).toLocaleDateString()
+                ]),
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [44, 62, 80], textColor: 255 },
+                alternateRowStyles: { fillColor: [250, 251, 252] },
+                ...trackY,
+            });
+            y = cursorY + 15;
+        }
+
+        // Section 2: Collection Health
+        addHeader('Collection Health Index');
+        if (collectionHealth.length > 0) {
+            autoTable(doc, {
+                startY: y,
+                head: [['Collection', 'Total Tests', 'Passed', 'Failed', 'Pass Rate']],
+                body: collectionHealth.map(c => [
+                    c.collection_name,
+                    c.total_tests || 0,
+                    c.passed || 0,
+                    c.failed || 0,
+                    `${(c.pass_rate || 0).toFixed(1)}%`
+                ]),
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [76, 175, 80], textColor: 255 },
+                alternateRowStyles: { fillColor: [250, 251, 252] },
+                ...trackY,
+            });
+            y = cursorY + 15;
+        }
+
+        // Section 3: Flaky Test Intel
+        if (flakyTests.length > 0) {
+            addHeader('Flaky Test Intelligence');
+            autoTable(doc, {
+                startY: y,
+                head: [['Test Name', 'Flake Risk', 'Stability Impact', 'Total Runs']],
+                body: flakyTests.map(t => [
+                    t.test_name,
+                    `${t.flake_rate}%`,
+                    t.flake_rate > 50 ? 'HIGH' : 'MEDIUM',
+                    t.total_runs
+                ]),
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [244, 67, 54], textColor: 255 },
+                alternateRowStyles: { fillColor: [250, 251, 252] },
+                ...trackY,
+            });
+        }
+
+        doc.save(`${projectName}_Analytics_${now.replace(/\//g, '-')}.pdf`);
+    };
+
+    const handleExportExcel = () => {
+        const projectName = workspace?.name || 'Project';
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1: Execution History
+        const historySheet = XLSX.utils.json_to_sheet(
+            historyData.map(run => ({
+                'Run ID': run.id,
+                'Status': run.status,
+                'Total Tests': run.total_tests || 0,
+                'Passed': run.passed || 0,
+                'Failed': run.failed || 0,
+                'Pass Rate': run.total_tests > 0 ? `${((run.passed / run.total_tests) * 100).toFixed(1)}%` : 'N/A',
+                'Date': run.created_at ? new Date(run.created_at).toLocaleDateString() : 'N/A',
+            }))
+        );
+        XLSX.utils.book_append_sheet(wb, historySheet, 'Execution History');
+
+        // Sheet 2: Trends
+        const trendsSheet = XLSX.utils.json_to_sheet(
+            trendsData.map(t => ({
+                'Date': t.date,
+                'Total Tests': t.total_tests || 0,
+                'Passed': t.passed || 0,
+                'Failed': t.failed || 0,
+                'Avg Duration (s)': (t.avg_duration || 0).toFixed(2),
+            }))
+        );
+        XLSX.utils.book_append_sheet(wb, trendsSheet, 'Trends');
+
+        // Sheet 3: Collection Health
+        const healthSheet = XLSX.utils.json_to_sheet(
+            collectionHealth.map(c => ({
+                'Collection': c.collection_name,
+                'Total Tests': c.total_tests || 0,
+                'Passed': c.passed || 0,
+                'Failed': c.failed || 0,
+                'Pass Rate (%)': (c.pass_rate || 0).toFixed(1),
+            }))
+        );
+        XLSX.utils.book_append_sheet(wb, healthSheet, 'Collection Health');
+
+        // Sheet 4: Flaky Tests
+        if (flakyTests.length > 0) {
+            const flakySheet = XLSX.utils.json_to_sheet(
+                flakyTests.map(t => ({
+                    'Test Name': t.test_name,
+                    'Flake Rate (%)': t.flake_rate,
+                    'Total Runs': t.total_runs,
+                }))
+            );
+            XLSX.utils.book_append_sheet(wb, flakySheet, 'Flaky Tests');
+        }
+
+        // Generate and download
+        const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `${projectName}_TestReport.xlsx`);
+    };
+
+    // ─── Chart Data ───────────────────────────────────────────────────
 
     // Chart data preparations
     const passFaillTrendData = {
@@ -352,12 +641,101 @@ const ReportsPage = () => {
                         </Grid>
                     </Grid>
 
+                    {/* Third Row: Execution History */}
+                    <Grid container spacing={3} sx={{ mt: 1 }}>
+                        <Grid item xs={12}>
+                            <Paper sx={{ p: 3 }}>
+                                <Typography variant="h6" gutterBottom>
+                                    Execution History
+                                </Typography>
+                                {historyData.length > 0 ? (
+                                    <TableContainer>
+                                        <Table size="small">
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell>Run ID</TableCell>
+                                                    <TableCell>Status</TableCell>
+                                                    <TableCell align="right">Total Tests</TableCell>
+                                                    <TableCell align="right">Passed</TableCell>
+                                                    <TableCell align="right">Failed</TableCell>
+                                                    <TableCell align="right">Pass Rate</TableCell>
+                                                    <TableCell align="right">Date</TableCell>
+                                                    <TableCell align="right">Actions</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {historyData.map((run) => (
+                                                    <TableRow key={run.id} hover>
+                                                        <TableCell sx={{ fontFamily: 'monospace' }}>
+                                                            {run.id.substring(0, 8)}...
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Chip
+                                                                label={run.status}
+                                                                color={
+                                                                    run.status === 'COMPLETED' ? 'success' :
+                                                                        run.status === 'FAILED' ? 'error' : 'warning'
+                                                                }
+                                                                size="small"
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell align="right">{run.total_tests}</TableCell>
+                                                        <TableCell align="right" sx={{ color: 'success.main', fontWeight: 'bold' }}>
+                                                            {run.passed}
+                                                        </TableCell>
+                                                        <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                                                            {run.failed}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                                                                <Typography variant="body2">{run.pass_rate}%</Typography>
+                                                                <Box sx={{ width: 50, height: 4, bgcolor: 'divider', borderRadius: 2 }}>
+                                                                    <Box sx={{ width: `${run.pass_rate}%`, height: '100%', bgcolor: run.pass_rate > 70 ? 'success.main' : 'warning.main', borderRadius: 2 }} />
+                                                                </Box>
+                                                            </Box>
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            {new Date(run.executed_at).toLocaleDateString()}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            <Button
+                                                                size="small"
+                                                                startIcon={<DownloadIcon />}
+                                                                onClick={() => handleDownloadRunReport(run.id)}
+                                                            >
+                                                                Report
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                ) : (
+                                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+                                        <Typography color="text.secondary">No execution history found</Typography>
+                                    </Box>
+                                )}
+                            </Paper>
+                        </Grid>
+                    </Grid>
+
                     {/* Export Buttons */}
                     <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-                        <Button variant="outlined" color="primary" disabled>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            startIcon={<PdfIcon />}
+                            onClick={handleExportPDF}
+                        >
                             Export to PDF
                         </Button>
-                        <Button variant="outlined" color="primary" disabled>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            startIcon={<ExcelIcon />}
+                            onClick={handleExportExcel}
+                        >
                             Export to Excel
                         </Button>
                     </Box>

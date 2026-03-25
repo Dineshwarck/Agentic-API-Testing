@@ -17,7 +17,8 @@ from .schemas import (
     TestRunHistoryResponseSchema, TrendResponseSchema,
     FlakyTestResponseSchema, CollectionHealthResponseSchema
 )
-from .models import Project, Endpoint, Document, TestCase, TestRun, TestResult, LLMProvider, Environment # Added Models
+from .models import Project, Endpoint, Document, TestCase, TestRun, TestResult, LLMProvider, Environment, BulkTestRun
+from asgiref.sync import sync_to_async
 import requests
 import os # Added os import
 from django.utils import timezone
@@ -170,50 +171,8 @@ async def execute_manual_request(request, payload: ExecutionRequestSchema):
     )
     return result
 
-class ExecuteRunSchema(Schema):
-    test_case_ids: Optional[List[str]] = None
 
-@router.post("/projects/{project_id}/runs")
-async def execute_run(request, project_id: UUID, payload: ExecuteRunSchema):
-    """Execute test cases for a project"""
-    # 1. Create Run
-    run = await ExecutionService.create_test_run(project_id=str(project_id))
-    
-    # 2. Identify Test Cases
-    if payload.test_case_ids:
-        test_cases = []
-        for tid in payload.test_case_ids:
-            try:
-                tc = await TestCase.objects.aget(id=tid)
-                test_cases.append(tc)
-            except TestCase.DoesNotExist:
-                pass
-    else:
-        # Run all Draft/Approved
-        test_cases = [tc async for tc in TestCase.objects.filter(total_project_id=str(project_id))] # Need to fix lookup logic
-        # Fix: Filter by endpoint__project_id
-        test_cases = [tc async for tc in TestCase.objects.filter(endpoint__project_id=str(project_id))]
 
-    # 3. Execute (Async Loop for now, Celery later)
-    results_summary = []
-    pass_count = 0
-    
-    for case in test_cases:
-        res = await ExecutionService.execute_test_case(case, run)
-        if res.passed:
-            pass_count += 1
-        results_summary.append({
-            "test_case_id": str(case.id),
-            "passed": res.passed,
-            "status_code": res.status_code
-        })
-    
-    # 4. Update Run Status
-    run.status = 'COMPLETED'
-    run.completed_at = now()
-    run.summary = f"Executed {len(test_cases)} tests. Passed: {pass_count}. Failed: {len(test_cases) - pass_count}"
-    await run.asave()
-    
 @router.get("/runs/{run_id}")
 def get_run_details(request, run_id: UUID):
     run = get_object_or_404(TestRun, id=run_id)
@@ -399,7 +358,7 @@ def delete_test_case(request, test_case_id: UUID):
     case.delete()
     return {"success": True}
 
-@router.post("/projects/{project_id}/runs", response=TestRunSchema)
+@router.post("/projects/{project_id}/runs")
 async def execute_run(request, project_id: UUID, payload: TestRunCreateSchema = None):
     """
     Agent 3 (Executor): Executes TestCases (Specific list or all APPROVED) in PARALLEL.
@@ -417,7 +376,8 @@ async def execute_run(request, project_id: UUID, payload: TestRunCreateSchema = 
         cases = await sync_to_async(list)(TestCase.objects.filter(endpoint__project_id=project_id, status='APPROVED'))
         
     if not cases:
-        return await TestRun.objects.acreate(project=project, status='COMPLETED')
+        empty_run = await TestRun.objects.acreate(project=project, status='COMPLETED')
+        return {"id": str(empty_run.id), "bulk_run_id": None, "status": "COMPLETED", "total_tests": 0}
 
     # 3. Load Test Data if provided
     data_rows = []
@@ -433,9 +393,7 @@ async def execute_run(request, project_id: UUID, payload: TestRunCreateSchema = 
         status='RUNNING' 
     )
     
-    # 5. Execute Tests (using BulkTestRun structure for consistency or just direct?)
-    # ExecutionService methods expect a BulkTestRun for progress tracking.
-    
+    # 5. Create BulkTestRun for progress tracking
     num_iterations = len(data_rows) if data_rows else 1
     total_tests = len(cases) * num_iterations
     
@@ -446,47 +404,52 @@ async def execute_run(request, project_id: UUID, payload: TestRunCreateSchema = 
         created_by='system-adhoc'
     )
     
-    # Execute
-    # Execute in Background
+    # Execute in Background using thread (asyncio.create_task doesn't work in Django dev server)
+    import threading
     import asyncio
-    asyncio.create_task(ExecutionService._execute_parallel(
-        test_cases=cases,
-        test_run=run,
-        bulk_run=bulk_run,
-        data_rows=data_rows
-    ))
     
-    return run
+    def _run_in_thread():
+        async def _execute():
+            try:
+                print(f"[EXEC] Starting execution of {total_tests} tests for bulk_run {bulk_run.id}")
+                await ExecutionService._execute_parallel(
+                    test_cases=cases,
+                    test_run=run,
+                    bulk_run=bulk_run,
+                    data_rows=data_rows
+                )
+                # Mark completion
+                bulk_run.status = 'COMPLETED'
+                bulk_run.completed_at = now()
+                await sync_to_async(bulk_run.save)()
+                run.status = 'COMPLETED'
+                run.completed_at = now()
+                run.summary = f"Executed {total_tests} tests. Passed: {bulk_run.passed_tests}. Failed: {bulk_run.failed_tests}"
+                await run.asave()
+                print(f"[EXEC] Completed: {bulk_run.passed_tests} passed, {bulk_run.failed_tests} failed")
+            except Exception as e:
+                print(f"[EXEC] ERROR: {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    bulk_run.status = 'FAILED'
+                    bulk_run.completed_at = now()
+                    await sync_to_async(bulk_run.save)()
+                    run.status = 'FAILED'
+                    run.completed_at = now()
+                    run.summary = f"Execution failed: {str(e)}"
+                    await run.asave()
+                except Exception:
+                    pass
+        
+        asyncio.run(_execute())
     
-    num_iterations = len(data_rows) if data_rows else 1
-    total_tests = len(cases) * num_iterations
+    thread = threading.Thread(target=_run_in_thread, daemon=True)
+    thread.start()
+    print(f"[EXEC] Background thread started for bulk_run {bulk_run.id}")
     
-    bulk_run = await BulkTestRun.objects.acreate(
-        project=project,
-        total_tests=total_tests,
-        status='RUNNING',
-        created_by='system-adhoc'
-    )
-    
-    # Execute
-    # We use fire-and-forget or await? 
-    # Frontend expects immediate ID, so we launch task. 
-    # But since this is async view, awaiting is cleaner for now unless it times out. 
-    # Let's await for MVP stability, user waits for "Agents at work" spinner.
-    
-    await ExecutionService._execute_parallel(
-        test_cases=cases,
-        test_run=run,
-        bulk_run=bulk_run,
-        data_rows=data_rows
-    )
-    
-    # Update Run Status
-    run.status = 'COMPLETED'
-    run.completed_at = now()
-    await run.save()
-    
-    return run
+    return {"id": str(run.id), "bulk_run_id": str(bulk_run.id), "status": "RUNNING", "total_tests": total_tests}
+
 
 @router.get("/projects/{project_id}/runs/{run_id}/stream")
 async def stream_run_execution(request, project_id: UUID, run_id: UUID):
@@ -958,7 +921,7 @@ def get_collection_health(
             'collection_name': endpoint['test_case__endpoint__name'] or 'Unknown',
             'total_tests': total,
             'passed': passed,
-            'failed': endpoint['failed'],
+            'failed': endpoint['failed_count'],
             'pass_rate': round(pass_rate, 2)
         })
     

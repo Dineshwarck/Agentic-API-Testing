@@ -172,12 +172,6 @@ class OpenAIAdapter(BaseLLMAdapter):
             
         try:
             # 1. First Call
-            # FORCE DEBUG EXCEPTION
-            key_preview = self.client.api_key[:10] + "..." + self.client.api_key[-4:] if self.client.api_key else "None"
-            debug_msg = f"DEBUG FATAL CHECK: URL={self.client.base_url} | KEY={key_preview}"
-            print(debug_msg) # Keep print just in case
-            raise Exception(debug_msg) 
-            
             response = await self.client.chat.completions.create(**kwargs)
             
             message = response.choices[0].message
